@@ -14,8 +14,8 @@ const TRANSFERQUERY: any = {
     type: 'update',
     params: ({ program, ou, trackedEntityInstance }: any) => ({
         program,
-        orgUnit: ou,
-        trackedEntity: trackedEntityInstance
+        ou: ou,
+        trackedEntityInstance: trackedEntityInstance
     })
 }
 
@@ -35,7 +35,18 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
         const events = await getEventsByEnrollment(selectedTei?.enrollmentId, selectedTei?.trackedEntity, programStagesToTransfer)
         const registrationEvent: any = events?.filter((x: any) => x?.programStage == dataStoreData.registration.programStage)[0] ?? {}
         const index: any = events?.findIndex((x: any) => x?.programStage == dataStoreData.transfer.programStage)
-        const transferEvent: any = events?.splice(index, 1)[0]
+        let transferEvent: any = events?.splice(index, 1)[0]
+
+        // If the student had no destination school, set it to the approving school
+        if (selectedTei?._needsDestination && dataStoreData?.transfer?.destinySchool) {
+            transferEvent = {
+                ...transferEvent,
+                dataValues: [
+                    ...((transferEvent?.dataValues ?? []).filter((x: any) => x?.dataElement !== dataStoreData.transfer.destinySchool)),
+                    { dataElement: dataStoreData.transfer.destinySchool, value: ou }
+                ]
+            }
+        }
 
         if (Object.keys(registrationEvent).length === 0) {
             show({ message: `Registration event is missing in this enrollment.`, type: { critical: true } })

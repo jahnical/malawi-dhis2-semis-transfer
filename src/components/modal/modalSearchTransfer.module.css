@@ -1,0 +1,14 @@
+.accordionHeaderContainer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center !important;
+    padding: 5px 10px 3px 10px;
+}
+
+.accordionHeader {
+    color: #404B5A;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+    margin: 0px !important;
+}

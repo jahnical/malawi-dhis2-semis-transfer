@@ -7,14 +7,15 @@ import { useTransferTEI } from "../../hooks/tei/useTransfer";
 import useGetSelectedKeys from "../../hooks/config/useGetSelectedKeys";
 
 function ApproveTranfer(props: ApproveTranferProps): React.ReactElement {
-    const { modalDetails, setModalDetails, i18n } = props;
+    const { modalDetails, setModalDetails, i18n, onAfterAction } = props;
     const { urlParameters } = useUrlParams()
     const { school, schoolName } = urlParameters
     const { sectionName } = useGetSectionTypeLabel();
     const { program, dataStoreData } = useGetSelectedKeys()
     const trackedEntityAttributes = program!?.trackedEntityType?.trackedEntityTypeAttributes
     const programTrackedEntityAttributes = program!?.programTrackedEntityAttributes
-    const { loading, transferTEI, rejectTEI, loadingEvents } = useTransferTEI({ selectedTei: modalDetails.row, handleCloseApproval: () => setModalDetails({ open: false }) });
+    const handleCloseApproval = () => { setModalDetails({ open: false }); onAfterAction?.(); };
+    const { loading, transferTEI, rejectTEI, loadingEvents } = useTransferTEI({ selectedTei: modalDetails.row, handleCloseApproval });
 
     const actions = [
         { id: "cancel", name: i18n.t("Cancel"), disabled: false, onClick: () => setModalDetails({ open: false }) },
