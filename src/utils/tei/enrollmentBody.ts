@@ -17,7 +17,7 @@ export function formatEnrollmentBody(program: any, events: any[], registrationEv
             trackedEntityType: tei?.trackedEntityType,
             enrollments: [
                 {
-                    orgUnit: newOu,
+                    orgUnit: registrationEvent?.orgUnit,
                     program: program?.id,
                     status: "COMPLETED",
                     enrollment: registrationEvent?.enrollment,
@@ -28,7 +28,7 @@ export function formatEnrollmentBody(program: any, events: any[], registrationEv
                     events: [
                         ...events?.filter(x => x != undefined)?.map((event: any) => ({
                             ...event,
-                            orgUnit: newOu,
+                            orgUnit: event?.orgUnit,
                         })),
                         {
                             ...transferEvent,

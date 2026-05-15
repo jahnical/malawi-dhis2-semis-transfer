@@ -55,31 +55,34 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
         }
 
         else {
-            await engine.mutate(TRANSFERQUERY, {
-                variables: {
-                    program: selectedTei?.programId,
-                    ou,
-                    trackedEntityInstance: selectedTei?.trackedEntity
-                }
-            })
-                .then(async () => {
-                    const transferStatus = dataStoreData.transfer?.statusOptions?.find((x: any) => x.configKey === "approvedCode")?.code
+            const transferStatus = dataStoreData.transfer?.statusOptions?.find((x: any) => x.configKey === "approvedCode")?.code
 
-                    const trackedEntities = formatEnrollmentBody(programData,
-                        events!,
-                        registrationEvent,
+            const trackedEntities = formatEnrollmentBody(programData,
+                events!,
+                registrationEvent,
+                ou,
+                transferEvent,
+                { ...selectedTei, trackedEntityType: dataStoreData.trackedEntityType },
+                transferStatus,
+                dataStoreData?.transfer?.status
+            )
+            await uploadValues({ trackedEntities: trackedEntities }, 'COMMIT', 'CREATE_AND_UPDATE').then(async () => {
+                await engine.mutate(TRANSFERQUERY, {
+                    variables: {
+                        program: selectedTei?.programId,
                         ou,
-                        transferEvent,
-                        { ...selectedTei, trackedEntityType: dataStoreData.trackedEntityType },
-                        transferStatus,
-                        dataStoreData?.transfer?.status
-                    )
-                    await uploadValues({ trackedEntities: trackedEntities }, 'COMMIT', 'CREATE_AND_UPDATE').then(() => {
+                        trackedEntityInstance: selectedTei?.trackedEntity
+                    }
+                })
+                    .then(() => {
                         setloading(false)
                         handleCloseApproval(); setRefetch(!refetch)
                     })
-                })
-                .catch(e => {
+                    .catch(e => {
+                        setloading(false)
+                    })
+            })
+                .catch((e: any) => {
                     setloading(false)
                 }).finally(() =>
                     setloading(false)
