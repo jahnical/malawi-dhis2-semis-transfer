@@ -13,7 +13,7 @@ const TRANSFERQUERY: any = {
     resource: 'tracker/ownership/transfer',
     type: 'update',
     params: ({ program, ou, trackedEntityInstance }: any) => ({
-        program,
+        program: program,
         ou: ou,
         trackedEntityInstance: trackedEntityInstance
     })
@@ -55,9 +55,10 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
         }
 
         else {
+            console.log('Program of the TEI to transfer', selectedTei)
             await engine.mutate(TRANSFERQUERY, {
                 variables: {
-                    program: selectedTei?.programId,
+                    program: selectedTei?.programId ?? dataStoreData?.program,
                     ou,
                     trackedEntityInstance: selectedTei?.trackedEntity
                 }
