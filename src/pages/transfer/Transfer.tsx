@@ -1,10 +1,10 @@
 import { useRecoilState } from "recoil";
-import { D2I18n, ProgramConfig } from "dhis2-semis-types";
+import { CustomAttributeProps, D2I18n, ProgramConfig } from "dhis2-semis-types";
 import React, { useEffect, useState } from "react";
 import { TableDataRefetch, Modules } from "dhis2-semis-types";
 import { Table } from "dhis2-semis-components";
 import EnrollmentActionsButtons from "../../components/enrollmentButtons/EnrollmentActionsButtons";
-import { useHeader, useTableData, useUrlParams, useViewPortWidth } from "dhis2-semis-functions";
+import { useHeader, useTableData, useTableSort, useUrlParams, useViewPortWidth } from "dhis2-semis-functions";
 import InfoPageComp from "../info/info";
 import OuNameContainer from "../../utils/common/getOrgUnit";
 import ApproveTranfer from "../../components/modal/modalTransfer";
@@ -18,9 +18,10 @@ const Transfer = ({ i18n }: { i18n: D2I18n }) => {
   const [refetch] = useRecoilState(TableDataRefetch);
   const [modalDetails, setModalDetails] = useState<any>({});
   const { dataStoreData, program: programData } = useGetSelectedKeys()
-  const { getData, loading } = useTableData({ module: Modules.Transfer });
+  const { getData, loading, sortableKeys } = useTableData({ module: Modules.Transfer });
   const { school, schoolName, position, sectionType, academicYear } = urlParameters;
   const [pagination, setPagination] = useState({ page: 1, pageSize: 5, totalPages: 0, totalElements: 0 });
+  const { sort, order, orderBy, createSortHandler, withSortableColumns } = useTableSort({ onSortChange: () => setPagination((prev) => ({ ...prev, page: 1 })) });
   const { getOuDisplayName, loaading: loadingOU } = OuNameContainer({ dataStoreData, setData, setModalDetails });
   const { columns } = useHeader({ dataStoreData, programConfigData: programData as unknown as ProgramConfig, programStage: dataStoreData?.transfer?.programStage });
   const [filterState, setFilterState] = useState<{ dataElements: any; attributes: any; }>({ attributes: [], dataElements: [] });
@@ -42,12 +43,13 @@ const Transfer = ({ i18n }: { i18n: D2I18n }) => {
         dataElementFilters: position === TabPosistion.INCOMING ?
           [`${dataStoreData?.transfer?.destinySchool as unknown as string}:in:${school}`]
           : filterState.dataElements,
+        sort: sort && { ...sort, program: programData! },
       }).then((resp: any) => {
         void getOuDisplayName(resp?.data)
         setPagination((prev: any) => ({ ...prev, totalPages: resp?.pagination?.totalPages, totalElements: resp?.pagination?.totalElements }))
       });
     }
-  }, [academicYear, sectionType, filterState, refetch, school, schoolName, pagination?.page, pagination?.pageSize, position]);
+  }, [academicYear, sectionType, filterState, refetch, school, schoolName, pagination?.page, pagination?.pageSize, position, sort]);
 
   return (
     <div style={{ height: "85vh" }}>
@@ -59,7 +61,7 @@ const Transfer = ({ i18n }: { i18n: D2I18n }) => {
             title={i18n.t("Transfers")}
             programConfig={programData!}
             viewPortWidth={viewPortWidth}
-            columns={[...(columns || []), { ...columns?.[0], displayName: i18n.t("Resquest time"), id: "requestTime" }]}
+            columns={withSortableColumns([...(columns || []), { ...columns?.[0], displayName: i18n.t("Resquest time"), id: "requestTime" }] as CustomAttributeProps[], sortableKeys)}
             tableData={data}
             defaultFilterNumber={3}
             filterState={filterState}
@@ -67,6 +69,10 @@ const Transfer = ({ i18n }: { i18n: D2I18n }) => {
             setFilterState={setFilterState}
             pagination={pagination}
             setPagination={setPagination}
+            sortable
+            order={order}
+            orderBy={orderBy}
+            createSortHandler={createSortHandler}
             rightElements={<EnrollmentActionsButtons  i18n={i18n} />}
           />
           {modalDetails?.open && <ApproveTranfer i18n={i18n} modalDetails={modalDetails} setModalDetails={setModalDetails} />}
