@@ -2,7 +2,7 @@ import React from "react";
 import style from './modalTransfer.module.css'
 import { ModalComponent, WithPadding } from "dhis2-semis-components";
 import { ApproveTranferProps } from "../../types/modal/ModalProps";
-import { useGetSectionTypeLabel, useUrlParams } from "dhis2-semis-functions";
+import { useGetSectionTypeLabel, useUrlParams, getSectionLabels } from "dhis2-semis-functions";
 import { useTransferTEI } from "../../hooks/tei/useTransfer";
 import useGetSelectedKeys from "../../hooks/config/useGetSelectedKeys";
 
@@ -11,6 +11,7 @@ function ApproveTranfer(props: ApproveTranferProps): React.ReactElement {
     const { urlParameters } = useUrlParams()
     const { school, schoolName } = urlParameters
     const { sectionName } = useGetSectionTypeLabel();
+    const sectionLabels = getSectionLabels(sectionName, i18n);
     const { program, dataStoreData } = useGetSelectedKeys()
     const trackedEntityAttributes = program!?.trackedEntityType?.trackedEntityTypeAttributes
     const programTrackedEntityAttributes = program!?.programTrackedEntityAttributes
@@ -41,7 +42,7 @@ function ApproveTranfer(props: ApproveTranferProps): React.ReactElement {
                             </span>
                             {
                                 i18n.t('This action will transfer this {{section}} into this school.', {
-                                    section: `${i18n.t(sectionName)}s`,
+                                    section: sectionLabels.singular,
                                 })
                             }
                         </span>
@@ -51,7 +52,7 @@ function ApproveTranfer(props: ApproveTranferProps): React.ReactElement {
                             </span>
                             {
                                 i18n.t('You are about to reject the {{section}} transfer to this school.', {
-                                    section: `${i18n.t(sectionName)}s`,
+                                    section: sectionLabels.singular,
                                 })
                             }
                         </span>
