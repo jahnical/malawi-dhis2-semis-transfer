@@ -4,23 +4,25 @@ import { useDataEngine } from '@dhis2/app-runtime'
 import { useGetEventsByEnrollment } from '../events/useGetEventsByEnrollment'
 import { TableDataRefetch } from 'dhis2-semis-types'
 import { useTransferConst } from '../transferOptions/statusOptions'
-import { useShowAlerts, useUploadEvents } from 'dhis2-semis-functions'
+import { useShowAlerts, useTrackerApiVersion, useUploadEvents } from 'dhis2-semis-functions'
 import { formatEnrollmentBody } from '../../utils/tei/enrollmentBody'
 import useGetUsedProgramStages from '../programStages/useGetUsedPProgramStages'
 import useGetSelectedKeys from '../config/useGetSelectedKeys'
 
+// 40 takes trackedEntityInstance + ou, 41 trackedEntity + ou, 42+ trackedEntity + orgUnit (43 dropped ou)
 const TRANSFERQUERY: any = {
     resource: 'tracker/ownership/transfer',
     type: 'update',
-    params: ({ program, ou, trackedEntityInstance }: any) => ({
+    params: ({ program, ou, trackedEntityInstance, apiVersion }: any) => ({
         program: program,
-        ou: ou,
-        trackedEntityInstance: trackedEntityInstance
+        [apiVersion < 42 ? 'ou' : 'orgUnit']: ou,
+        [apiVersion < 41 ? 'trackedEntityInstance' : 'trackedEntity']: trackedEntityInstance
     })
 }
 
 export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedTei: any, handleCloseApproval: () => void }) {
     const engine = useDataEngine()
+    const apiVersion = useTrackerApiVersion()
     const { show, hide } = useShowAlerts()
     const { dataStoreData, program: programData } = useGetSelectedKeys()
     const [loading, setloading] = useState(false)
@@ -60,7 +62,8 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
                 variables: {
                     program: selectedTei?.programId ?? dataStoreData?.program,
                     ou,
-                    trackedEntityInstance: selectedTei?.trackedEntity
+                    trackedEntityInstance: selectedTei?.trackedEntity,
+                    apiVersion
                 }
             })
                 .then(async () => {
