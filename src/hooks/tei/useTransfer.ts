@@ -4,7 +4,7 @@ import { useDataEngine } from '@dhis2/app-runtime'
 import { useGetEventsByEnrollment } from '../events/useGetEventsByEnrollment'
 import { TableDataRefetch } from 'dhis2-semis-types'
 import { useTransferConst } from '../transferOptions/statusOptions'
-import { useGetEvents, useShowAlerts, useTrackerApiVersion, useUploadEvents } from 'dhis2-semis-functions'
+import { formatTrackerError, getTrackerErrors, useGetEvents, useShowAlerts, useTrackerApiVersion, useUploadEvents } from 'dhis2-semis-functions'
 import { transferApprovalPayload } from '../../utils/tei/transferApprovalPayload'
 import useGetSelectedKeys from '../config/useGetSelectedKeys'
 
@@ -70,26 +70,43 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
                 return
             }
 
-            await engine.mutate(TRANSFERQUERY, {
-                variables: {
-                    program: selectedTei?.programId ?? dataStoreData?.program,
-                    ou,
-                    trackedEntityInstance: selectedTei?.trackedEntity,
-                    apiVersion
-                }
+            const program = selectedTei?.programId ?? dataStoreData?.program
+            const transferOwnership = (orgUnit: string) => engine.mutate(TRANSFERQUERY, {
+                variables: { program, ou: orgUnit, trackedEntityInstance: selectedTei?.trackedEntity, apiVersion }
             })
-                .then(async () => {
-                    // Events only: the enrollment's status, dates and org unit stay as they are
-                    await uploadValues(payload, 'COMMIT', 'UPDATE').then(() => {
-                        setloading(false)
-                        handleCloseApproval(); setRefetch(!refetch)
-                    })
-                })
-                .catch(e => {
-                    setloading(false)
-                }).finally(() =>
-                    setloading(false)
-                )
+            const fail = (message: string) => {
+                show({ message, type: { critical: true, duration: 15000 } })
+                setloading(false)
+            }
+
+            // Ownership has to move first: the receiving school can only write to records it owns
+            try {
+                await transferOwnership(ou)
+            } catch (error) {
+                fail(`Could not transfer ownership: ${formatTrackerError(error)}`)
+                return
+            }
+
+            // Events only, all or nothing: the enrollment's status, dates and org unit stay as they are
+            try {
+                const response = await uploadValues(payload, 'COMMIT', 'UPDATE', { atomicMode: 'ALL', silent: true })
+                const rejected = getTrackerErrors(response)
+                if (rejected.length > 0) throw response
+            } catch (error) {
+                // Nothing was moved, so give ownership back; otherwise the learner would be owned by the
+                // receiving school while still registered at the sending one, and drop off the list
+                const reason = formatTrackerError(error)
+                try {
+                    await transferOwnership(registrationEvent.orgUnit)
+                    fail(`Could not approve the transfer, nothing was changed: ${reason}`)
+                } catch (revertError) {
+                    fail(`Could not approve the transfer: ${reason}. Ownership has already moved to the receiving school and could not be moved back (${formatTrackerError(revertError)}); please contact an administrator.`)
+                }
+                return
+            }
+
+            setloading(false)
+            handleCloseApproval(); setRefetch(!refetch)
         }
     }
 
