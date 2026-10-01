@@ -4,10 +4,11 @@ import { useDataEngine } from '@dhis2/app-runtime'
 import { useGetEventsByEnrollment } from '../events/useGetEventsByEnrollment'
 import { TableDataRefetch } from 'dhis2-semis-types'
 import { useTransferConst } from '../transferOptions/statusOptions'
-import { useShowAlerts, useTrackerApiVersion, useUploadEvents } from 'dhis2-semis-functions'
-import { formatEnrollmentBody } from '../../utils/tei/enrollmentBody'
-import useGetUsedProgramStages from '../programStages/useGetUsedPProgramStages'
+import { formatTrackerError, getTrackerErrors, useGetEvents, useShowAlerts, useTrackerApiVersion, useUploadEvents } from 'dhis2-semis-functions'
+import { transferApprovalPayload } from '../../utils/tei/transferApprovalPayload'
 import useGetSelectedKeys from '../config/useGetSelectedKeys'
+
+const ENROLLMENT_EVENT_FIELDS = 'event,programStage,orgUnit,occurredAt,scheduledAt,status,enrollment,trackedEntity,program,dataValues[dataElement,value]'
 
 // 40 takes trackedEntityInstance + ou, 41 trackedEntity + ou, 42+ trackedEntity + orgUnit (43 dropped ou)
 const TRANSFERQUERY: any = {
@@ -24,70 +25,88 @@ export function useTransferTEI({ selectedTei, handleCloseApproval }: { selectedT
     const engine = useDataEngine()
     const apiVersion = useTrackerApiVersion()
     const { show, hide } = useShowAlerts()
-    const { dataStoreData, program: programData } = useGetSelectedKeys()
+    const { dataStoreData } = useGetSelectedKeys()
     const [loading, setloading] = useState(false)
     const [refetch, setRefetch] = useRecoilState<boolean>(TableDataRefetch)
     const { transferConst } = useTransferConst({ dataStore: dataStoreData })
     const { uploadValues } = useUploadEvents()
     const { getEventsByEnrollment, loading: loadingEvents } = useGetEventsByEnrollment()
-    const programStagesToTransfer = useGetUsedProgramStages()
+    const { getEvents } = useGetEvents()
 
     const transferTEI = async (ou: any) => {
         setloading(true)
-        const events = await getEventsByEnrollment(selectedTei?.enrollmentId, selectedTei?.trackedEntity, programStagesToTransfer)
-        const registrationEvent: any = events?.filter((x: any) => x?.programStage == dataStoreData.registration.programStage)[0] ?? {}
-        const index: any = events?.findIndex((x: any) => x?.programStage == dataStoreData.transfer.programStage)
-        let transferEvent: any = events?.splice(index, 1)[0]
+        // Every event of the enrollment, whatever its stage
+        const events: any[] = await getEvents({
+            program: selectedTei?.programId ?? dataStoreData?.program,
+            enrollments: selectedTei?.enrollmentId,
+            orgUnitMode: 'ACCESSIBLE',
+            fields: ENROLLMENT_EVENT_FIELDS,
+            paging: false,
+        } as any) ?? []
+        const registrationEvent: any = events.find((x: any) => x?.programStage == dataStoreData.registration.programStage)
 
-        // If the student had no destination school, set it to the approving school
-        if (selectedTei?._needsDestination && dataStoreData?.transfer?.destinySchool) {
-            transferEvent = {
-                ...transferEvent,
-                dataValues: [
-                    ...((transferEvent?.dataValues ?? []).filter((x: any) => x?.dataElement !== dataStoreData.transfer.destinySchool)),
-                    { dataElement: dataStoreData.transfer.destinySchool, value: ou }
-                ]
-            }
-        }
-
-        if (Object.keys(registrationEvent).length === 0) {
+        if (!registrationEvent) {
             show({ message: `Registration event is missing in this enrollment.`, type: { critical: true } })
             setTimeout(hide, 5000);
+            setloading(false)
             handleCloseApproval();
         }
 
         else {
-            console.log('Program of the TEI to transfer', selectedTei)
-            await engine.mutate(TRANSFERQUERY, {
-                variables: {
-                    program: selectedTei?.programId ?? dataStoreData?.program,
-                    ou,
-                    trackedEntityInstance: selectedTei?.trackedEntity,
-                    apiVersion
-                }
-            })
-                .then(async () => {
-                    const transferStatus = dataStoreData.transfer?.statusOptions?.find((x: any) => x.configKey === "approvedCode")?.code
-
-                    const trackedEntities = formatEnrollmentBody(programData,
-                        events!,
-                        registrationEvent,
-                        ou,
-                        transferEvent,
-                        { ...selectedTei, trackedEntityType: dataStoreData.trackedEntityType },
-                        transferStatus,
-                        dataStoreData?.transfer?.status
-                    )
-                    await uploadValues({ trackedEntities: trackedEntities }, 'COMMIT', 'CREATE_AND_UPDATE').then(() => {
-                        setloading(false)
-                        handleCloseApproval(); setRefetch(!refetch)
-                    })
+            let payload: { events: any[] }
+            try {
+                // Built before the ownership transfer so a missing transfer event stops the approval
+                payload = transferApprovalPayload({
+                    events,
+                    transfer: dataStoreData.transfer as any,
+                    registrationStage: dataStoreData.registration.programStage,
+                    destinationSchool: ou,
                 })
-                .catch(e => {
-                    setloading(false)
-                }).finally(() =>
-                    setloading(false)
-                )
+            } catch (error: any) {
+                show({ message: error?.message, type: { critical: true } })
+                setTimeout(hide, 5000);
+                setloading(false)
+                handleCloseApproval();
+                return
+            }
+
+            const program = selectedTei?.programId ?? dataStoreData?.program
+            const transferOwnership = (orgUnit: string) => engine.mutate(TRANSFERQUERY, {
+                variables: { program, ou: orgUnit, trackedEntityInstance: selectedTei?.trackedEntity, apiVersion }
+            })
+            const fail = (message: string) => {
+                show({ message, type: { critical: true, duration: 15000 } })
+                setloading(false)
+            }
+
+            // Ownership has to move first: the receiving school can only write to records it owns
+            try {
+                await transferOwnership(ou)
+            } catch (error) {
+                fail(`Could not transfer ownership: ${formatTrackerError(error)}`)
+                return
+            }
+
+            // Events only, all or nothing: the enrollment's status, dates and org unit stay as they are
+            try {
+                const response = await uploadValues(payload, 'COMMIT', 'UPDATE', { atomicMode: 'ALL', silent: true })
+                const rejected = getTrackerErrors(response)
+                if (rejected.length > 0) throw response
+            } catch (error) {
+                // Nothing was moved, so give ownership back; otherwise the learner would be owned by the
+                // receiving school while still registered at the sending one, and drop off the list
+                const reason = formatTrackerError(error)
+                try {
+                    await transferOwnership(registrationEvent.orgUnit)
+                    fail(`Could not approve the transfer, nothing was changed: ${reason}`)
+                } catch (revertError) {
+                    fail(`Could not approve the transfer: ${reason}. Ownership has already moved to the receiving school and could not be moved back (${formatTrackerError(revertError)}); please contact an administrator.`)
+                }
+                return
+            }
+
+            setloading(false)
+            handleCloseApproval(); setRefetch(!refetch)
         }
     }
 

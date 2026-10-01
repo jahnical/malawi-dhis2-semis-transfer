@@ -54,7 +54,10 @@ export default function useSearchTransferEnrollments({ program, transfer, school
                 for (const dv of (pendingEvent.dataValues ?? [])) dvMap[dv.dataElement] = dv.value
                 const needsDestination = !dvMap[transfer?.destinySchool]
 
-                const activeEnrollment = tei.enrollments?.find((e: any) => e.status === 'ACTIVE')
+                // The enrollment being transferred is the one holding the pending request; it may be
+                // ACTIVE, or already closed by a final result
+                const transferEnrollment = tei.enrollments?.find((e: any) => e.enrollment === pendingEvent.enrollment)
+                    ?? tei.enrollments?.find((e: any) => e.status === 'ACTIVE')
 
                 let originSchoolName = ownershipOu
                 if (ownershipOu) {
@@ -69,7 +72,7 @@ export default function useSearchTransferEnrollments({ program, transfer, school
                 results.push({
                     trackedEntity: tei.trackedEntity,
                     enrollmentId: pendingEvent.enrollment,
-                    programId: activeEnrollment?.program,
+                    programId: transferEnrollment?.program ?? program,
                     ownershipOu,
                     _needsDestination: needsDestination,
                     [transfer?.originSchool]: originSchoolName,
