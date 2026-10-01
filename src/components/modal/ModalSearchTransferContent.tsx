@@ -256,7 +256,7 @@ function ModalSearchTransferContent({ open, setOpen, i18n }: ModalSearchTransfer
                                 ) : (
                                     <NoticeBox title={i18n.t('No pending incoming transfers found')}>
                                         {i18n.t(
-                                            'No students with a pending incoming transfer match your search.'
+                                            'No learners with a pending incoming transfer match your search.'
                                         )}
                                     </NoticeBox>
                                 )}
